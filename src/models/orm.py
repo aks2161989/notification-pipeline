@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     UniqueConstraint,
+    CheckConstraint,
     Text,
 )
 from sqlalchemy.orm import declarative_base, relationship
@@ -43,6 +44,10 @@ class PMORM(Base):
 
     project = relationship("ProjectORM", back_populates="pms")
 
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="chk_pm_status"),
+    )
+
 
 class FellowORM(Base):
     __tablename__ = "fellows"
@@ -56,6 +61,10 @@ class FellowORM(Base):
 
     project = relationship("ProjectORM", back_populates="fellows")
     videos = relationship("VideoRecordORM", back_populates="fellow")
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="chk_fellow_status"),
+    )
 
 
 class VideoRecordORM(Base):
@@ -79,6 +88,10 @@ class VideoRecordORM(Base):
 
     __table_args__ = (
         Index("idx_video_status_yt", "current_status", "youtube_video_id"),
+        CheckConstraint(
+            "current_status IN ('submitted', 'in_review', 'needs_modification', 'queued', 'published')",
+            name="chk_video_status",
+        ),
     )
 
 
@@ -93,6 +106,13 @@ class ReviewEventORM(Base):
     notes = Column(Text, nullable=True)
 
     video = relationship("VideoRecordORM", back_populates="events")
+
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('submitted', 'review_started', 'modification_requested', 'resubmitted', 'approved', 'queued', 'published')",
+            name="chk_event_type",
+        ),
+    )
 
 
 class NotificationLogORM(Base):
@@ -110,4 +130,8 @@ class NotificationLogORM(Base):
 
     __table_args__ = (
         Index("idx_notif_video_status", "video_id", "delivery_status"),
+        CheckConstraint(
+            "delivery_status IN ('pending', 'sending', 'sent', 'failed', 'skipped')",
+            name="chk_notif_status",
+        ),
     )

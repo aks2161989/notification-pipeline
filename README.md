@@ -6,7 +6,7 @@
 [![CI Pipeline](https://github.com/aks2161989/notification-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/aks2161989/notification-pipeline/actions)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Database](https://img.shields.io/badge/database-PostgreSQL%20%7C%20SQLite-green.svg)](https://www.postgresql.org/)
-[![Tests](https://img.shields.io/badge/tests-18%20passed-brightgreen.svg)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/tests-24%20passed-brightgreen.svg)](https://pytest.org/)
 [![Architecture](https://img.shields.io/badge/architecture-idempotent%20state%20machine-purple.svg)](#architecture--system-design)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -149,6 +149,10 @@ To prevent concurrent scheduled executions from colliding:
 * **Pipeline Doctor**: Detects stranded `SENDING` jobs, orphaned videos without fellow records, and fellows with invalid emails.
 * **Automated Retry Service**: Queries transient failures and re-attempts delivery with exponential backoff up to 3 attempts.
 
+### 5. Ingestion Hygiene & Database-Level Constraints
+* **Canonical URL & ID Parsing**: Rather than expecting users to paste raw IDs, regex extractors automatically parse YouTube watch URLs, shortlinks, embed links, and Drive URLs down to their canonical tokens during ingestion.
+* **Database Check Constraints**: Enforces SQL `CheckConstraint` on controlled vocabularies (`current_status`, `delivery_status`, `status`) at the database engine level, rejecting invalid states.
+
 ---
 
 ## 🚀 Quickstart & Interactive CLI
@@ -227,25 +231,31 @@ pytest tests/ -v
 ```
 
 ```
-tests/test_adapters.py::test_mock_youtube_adapter_lifecycle PASSED       [  5%]
-tests/test_adapters.py::test_mock_drive_adapter_metadata PASSED          [ 11%]
-tests/test_adapters.py::test_email_formatter_templates PASSED            [ 16%]
-tests/test_adapters.py::test_dispatcher_dry_run_mode PASSED              [ 22%]
-tests/test_adapters.py::test_dispatcher_redirected_mode PASSED           [ 27%]
-tests/test_adapters.py::test_dispatcher_inactive_fellow_skipped PASSED   [ 33%]
-tests/test_pipeline.py::test_execution_lock_mutual_exclusion PASSED      [ 38%]
-tests/test_pipeline.py::test_execution_lock_stale_reclaim PASSED         [ 44%]
-tests/test_pipeline.py::test_idempotency_state_machine_and_duplicate_prevention PASSED [ 50%]
-tests/test_pipeline.py::test_failure_handling_and_retry_state PASSED     [ 55%]
-tests/test_recovery.py::test_doctor_detects_stranded_sending PASSED      [ 61%]
-tests/test_recovery.py::test_doctor_detects_exhausted_retries PASSED     [ 66%]
-tests/test_recovery.py::test_retry_service_successful_retry PASSED       [ 72%]
-tests/test_storage.py::test_project_and_fellow_creation PASSED           [ 77%]
-tests/test_storage.py::test_video_record_lifecycle PASSED                [ 83%]
-tests/test_idempotency_guard_detection PASSED                            [ 88%]
-tests/test_storage.py::test_seeder_synthetic_scenarios PASSED            [ 94%]
+tests/test_adapters.py::test_mock_youtube_adapter_lifecycle PASSED       [  4%]
+tests/test_adapters.py::test_mock_drive_adapter_metadata PASSED          [  8%]
+tests/test_adapters.py::test_email_formatter_templates PASSED            [ 12%]
+tests/test_adapters.py::test_dispatcher_dry_run_mode PASSED              [ 16%]
+tests/test_adapters.py::test_dispatcher_redirected_mode PASSED           [ 20%]
+tests/test_adapters.py::test_dispatcher_inactive_fellow_skipped PASSED   [ 25%]
+tests/test_normalizer.py::test_normalize_email_hygiene PASSED            [ 29%]
+tests/test_normalizer.py::test_extract_youtube_id_formats PASSED         [ 33%]
+tests/test_normalizer.py::test_extract_drive_file_id_formats PASSED      [ 37%]
+tests/test_normalizer.py::test_normalize_status PASSED                   [ 41%]
+tests/test_normalizer.py::test_db_check_constraint_rejects_invalid_video_status PASSED [ 45%]
+tests/test_normalizer.py::test_db_check_constraint_rejects_invalid_notification_status PASSED [ 50%]
+tests/test_pipeline.py::test_execution_lock_mutual_exclusion PASSED      [ 54%]
+tests/test_pipeline.py::test_execution_lock_stale_reclaim PASSED         [ 58%]
+tests/test_pipeline.py::test_idempotency_state_machine_and_duplicate_prevention PASSED [ 62%]
+tests/test_pipeline.py::test_failure_handling_and_retry_state PASSED     [ 66%]
+tests/test_recovery.py::test_doctor_detects_stranded_sending PASSED      [ 70%]
+tests/test_recovery.py::test_doctor_detects_exhausted_retries PASSED     [ 75%]
+tests/test_recovery.py::test_retry_service_successful_retry PASSED       [ 79%]
+tests/test_storage.py::test_project_and_fellow_creation PASSED           [ 83%]
+tests/test_storage.py::test_video_record_lifecycle PASSED                [ 87%]
+tests/test_idempotency_guard_detection PASSED                            [ 91%]
+tests/test_storage.py::test_seeder_synthetic_scenarios PASSED            [ 95%]
 tests/test_storage.py::test_excel_file_ingestion PASSED                  [100%]
-============================= 18 passed in 1.49s ==============================
+============================= 24 passed in 2.05s ==============================
 ```
 
 ---

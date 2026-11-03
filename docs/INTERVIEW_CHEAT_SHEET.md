@@ -30,7 +30,16 @@
 
 ## 3. High-Probability Interview Questions & Star Answers
 
-### Q1: "Why did you build this in Python and PostgreSQL instead of Google Apps Script?"
+### Q1: "How did you process and normalize the data before using it in the pipeline?"
+> **Your Answer**:
+> *"When I inherited the initial tracking spreadsheet, it had classic operational data hygiene problems: it was denormalized (e.g. composite strings like 'Jainil Shah - Madison' were pasted directly into video rows), emails had mixed casing and whitespace, and video links were pasted inconsistently as full URLs, short links, or raw IDs.
+>
+> To resolve this, I took a two-tier approach:
+> 1. **Relational Normalization (3NF)**: I decomposed the raw structure into Third Normal Form across 6 discrete tables (`projects`, `pms`, `fellows`, `videos`, `review_events`, `notifications`). This decoupled fellow identities from projects, eliminated transitive dependencies, and gave every record a stable surrogate primary key.
+> 2. **Ingestion Cleansing & Canonical Extractors (`normalizer.py`)**: I built regex and URL parsing extractors that automatically parse full YouTube links (`watch?v=...`, `youtu.be/...`, embed links) down to their canonical 11-character video ID, and Drive links down to their stable file ID. Emails are sanitized (`.strip().lower()`) and stripped of non-printable unicode characters.
+> 3. **Defensive Database Constraints**: Rather than relying only on application code, I enforced database-level SQL `CheckConstraint`s on our controlled vocabularies (`current_status`, `delivery_status`). If any corrupt status is attempted, the database engine itself rejects the write."*
+
+### Q2: "Why did you build this in Python and PostgreSQL instead of Google Apps Script?"
 > **Your Answer**:
 > *"The team initially considered Google Apps Script inside Google Sheets because the workspace was already on Google. However, once I evaluated the reliability requirements for Phase 3, Apps Script presented critical engineering constraints:*
 > 1. *Execution Caps*: Apps Script enforces a strict 6-minute timeout limit, making batch polling and retries prone to mid-run termination.
@@ -40,7 +49,7 @@
 
 ---
 
-### Q2: "How did you prevent duplicate emails when scheduled triggers overlap?"
+### Q3: "How did you prevent duplicate emails when scheduled triggers overlap?"
 > **Your Answer**:
 > *"Duplicates in event pipelines typically happen in two ways: overlapping execution triggers and mid-pipeline crashes. We solved both:*
 > * First, **Cross-Process Concurrency Locking (`ExecutionLock`)**: At the start of each run, the pipeline acquires an execution lock recording the worker PID, hostname, and timestamp. If a prior job is still running, overlapping triggers immediately exit with `LockAcquisitionError`. We also added stale-lock reclamation (TTL = 10 mins) to prevent deadlocks if a container dies.
@@ -48,7 +57,7 @@
 
 ---
 
-### Q3: "What happens if an external API (YouTube or Gmail) fails intermittently?"
+### Q4: "What happens if an external API (YouTube or Gmail) fails intermittently?"
 > **Your Answer**:
 > *"We built an operational `RetryService` and health monitoring `doctor` command:*
 > * Transient failures (e.g. SMTP connection timeouts or API rate limits) transition the notification to `FAILED` and increment `attempt_count`.
@@ -57,7 +66,7 @@
 
 ---
 
-### Q4: "How does this experience translate to Vernal Point's data engineering needs?"
+### Q5: "How does this experience translate to Vernal Point's data engineering needs?"
 > **Your Answer**:
 > *"It's the exact same engineering pattern described in your job description for the First Year:*
 > * **Raw Feed to Trusted Dataset**: In both cases, you have untrusted, decoupled systems (Google Drive & YouTube vs. Custodians like Schwab, Fidelity, or Addepar). You cannot rely on raw descriptions; you must model stable surrogate identifiers (`account_id`, `entity_id`, `file_id`).

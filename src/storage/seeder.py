@@ -14,6 +14,13 @@ from src.models.orm import (
     ReviewEventORM,
     NotificationLogORM,
 )
+from src.storage.normalizer import (
+    normalize_email,
+    extract_youtube_id,
+    extract_drive_file_id,
+    normalize_status,
+    clean_text,
+)
 
 
 def _excel_date_to_datetime(val: Any) -> datetime | None:
@@ -83,10 +90,10 @@ def seed_from_excel(xlsx_path: Path, session: Session) -> dict[str, int]:
                     session.add(PMORM(
                         pm_id=pm_id,
                         project_id=_to_int(row_dict.get("project_id")) or 1,
-                        full_name=str(row_dict.get("full_name", f"PM {pm_id}")),
-                        email=str(row_dict.get("email", f"pm{pm_id}@humanitarians.ai")),
-                        role=str(row_dict.get("role", "pm")),
-                        status=str(row_dict.get("status", "active")),
+                        full_name=clean_text(row_dict.get("full_name")) or f"PM {pm_id}",
+                        email=normalize_email(row_dict.get("email")) or f"pm{pm_id}@humanitarians.ai",
+                        role=normalize_status(row_dict.get("role"), default="pm"),
+                        status=normalize_status(row_dict.get("status"), default="active"),
                     ))
                     counts["pms"] += 1
             session.flush()
@@ -106,10 +113,10 @@ def seed_from_excel(xlsx_path: Path, session: Session) -> dict[str, int]:
                     session.add(FellowORM(
                         fellow_id=fid,
                         project_id=_to_int(row_dict.get("project_id")) or 1,
-                        full_name=str(row_dict.get("full_name", f"Fellow {fid}")),
-                        email=str(row_dict.get("email", f"fellow{fid}@northeastern.edu")),
-                        status=str(row_dict.get("status", "active")),
-                        display_label=str(row_dict.get("display_label", "")),
+                        full_name=clean_text(row_dict.get("full_name")) or f"Fellow {fid}",
+                        email=normalize_email(row_dict.get("email")) or f"fellow{fid}@northeastern.edu",
+                        status=normalize_status(row_dict.get("status"), default="active"),
+                        display_label=clean_text(row_dict.get("display_label")),
                     ))
                     counts["fellows"] += 1
             session.flush()
@@ -126,16 +133,28 @@ def seed_from_excel(xlsx_path: Path, session: Session) -> dict[str, int]:
                 row_dict = dict(zip(header, r))
                 vid = _to_int(row_dict.get("video_id"))
                 if vid is not None and not session.get(VideoRecordORM, vid):
+                    raw_yt_link = clean_text(row_dict.get("youtube_link"))
+                    raw_dr_link = clean_text(row_dict.get("drive_link"))
+                    yt_id = (
+                        extract_youtube_id(row_dict.get("youtube_video_id"))
+                        or extract_youtube_id(raw_yt_link)
+                        or f"yt_id_{vid}"
+                    )
+                    dr_id = (
+                        extract_drive_file_id(row_dict.get("drive_file_id"))
+                        or extract_drive_file_id(raw_dr_link)
+                        or f"drive_file_{vid}"
+                    )
                     session.add(VideoRecordORM(
                         video_id=vid,
                         fellow_id=_to_int(row_dict.get("fellow_id")),
-                        title=str(row_dict.get("title")) if row_dict.get("title") else f"Video {vid}",
-                        youtube_link=str(row_dict.get("youtube_link")) if row_dict.get("youtube_link") else None,
-                        drive_link=str(row_dict.get("drive_link")) if row_dict.get("drive_link") else None,
-                        drive_file_id=str(row_dict.get("drive_file_id")) if row_dict.get("drive_file_id") else f"drive_file_{vid}",
-                        youtube_video_id=str(row_dict.get("youtube_video_id")) if row_dict.get("youtube_video_id") else f"yt_id_{vid}",
-                        current_status=str(row_dict.get("current_status", "submitted")),
-                        status_note=str(row_dict.get("status_note", "")) if row_dict.get("status_note") else None,
+                        title=clean_text(row_dict.get("title")) or f"Video {vid}",
+                        youtube_link=raw_yt_link,
+                        drive_link=raw_dr_link,
+                        drive_file_id=dr_id,
+                        youtube_video_id=yt_id,
+                        current_status=normalize_status(row_dict.get("current_status"), default="submitted"),
+                        status_note=clean_text(row_dict.get("status_note")),
                         submitted_on=_excel_date_to_datetime(row_dict.get("submitted_on")),
                         published_on=_excel_date_to_datetime(row_dict.get("published_on")),
                     ))
@@ -158,12 +177,13 @@ def seed_from_excel(xlsx_path: Path, session: Session) -> dict[str, int]:
                     session.add(ReviewEventORM(
                         event_id=eid,
                         video_id=vid,
-                        event_type=str(row_dict.get("event_type", "submitted")),
-                        reviewer=str(row_dict.get("reviewer", "system")),
+                        event_type=normalize_status(row_dict.get("event_type"), default="submitted"),
+                        reviewer=normalize_email(row_dict.get("reviewer")) or "system",
                         occurred_on=_excel_date_to_datetime(row_dict.get("occurred_on")) or datetime.now(timezone.utc),
-                        notes=str(row_dict.get("notes", "")) if row_dict.get("notes") else None,
+                        notes=clean_text(row_dict.get("notes")),
                     ))
                     counts["review_events"] += 1
+            session.flush()
             session.flush()
 
     return counts
