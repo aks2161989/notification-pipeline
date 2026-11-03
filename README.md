@@ -34,31 +34,31 @@ The pipeline replaces brittle string matching with an **explicit relational iden
 ```mermaid
 flowchart TD
     subgraph Ingestion["1. Ingestion & Identity Modeling"]
-        Drive[Google Drive Submissions] -->|Extract Stable File ID| IngestEngine[Data Ingestion Engine]
-        Roster[Fellow & PM Directory] -->|Map Fellow ID| IngestEngine
-        IngestEngine -->|Surrogate Keys| DB[(Operational Store: PostgreSQL / SQLite)]
+        Drive["Google Drive Submissions"] -->|Extract Stable File ID| IngestEngine["Data Ingestion Engine"]
+        Roster["Fellow & PM Directory"] -->|Map Fellow ID| IngestEngine
+        IngestEngine -->|Surrogate Keys| DB[("Operational Store: PostgreSQL / SQLite")]
     end
 
     subgraph Polling["2. Concurrency Lock & Polling Engine"]
-        Cron[Scheduled Cron Runner] --> Lock{Acquire ExecutionLock?}
-        Lock -->|Held / Active| Collide[Abort Overlap Safely]
-        Lock -->|Acquired| Poller[YouTube Status Detector]
-        Poller -->|Fetch Privacy Status| YTAPI[YouTube Data API v3]
-        YTAPI -->|Status = Public| Reconciler[Reconciliation Matcher]
+        Cron["Scheduled Cron Runner"] --> Lock{"Acquire ExecutionLock?"}
+        Lock -->|"Held / Active"| Collide["Abort Overlap Safely"]
+        Lock -->|Acquired| Poller["YouTube Status Detector"]
+        Poller -->|Fetch Privacy Status| YTAPI["YouTube Data API v3"]
+        YTAPI -->|"Status = Public"| Reconciler["Reconciliation Matcher"]
     end
 
     subgraph Idempotency["3. Two-Phase Idempotent State Machine"]
-        Reconciler --> CheckSent{Notification In-Flight or Sent?}
-        CheckSent -->|Yes (sending/sent)| SkipDuplicate[Skip Dispatch / Duplicate Guard]
-        CheckSent -->|No Record| Step1[Phase 1: Pre-commit State = 'SENDING']
-        Step1 --> Dispatcher[Notification Dispatcher]
-        Dispatcher --> ModeEval{Pipeline Mode}
-        ModeEval -->|DRY_RUN| LogOnly[Log Intended Send + Save Outbox]
-        ModeEval -->|REDIRECTED| TestInbox[Redirect to Test Inbox with X-Headers]
-        ModeEval -->|COHORT / PROD| LiveSend[Send to Fellow via Gmail/SMTP]
-        Dispatcher --> Result{Delivery Result?}
-        Result -->|Success| Step2A[Phase 2A: Commit State = 'SENT' + Timestamp]
-        Result -->|Failure| Step2B[Phase 2B: Commit State = 'FAILED' + Retry Queue]
+        Reconciler --> CheckSent{"Notification In-Flight or Sent?"}
+        CheckSent -->|"Yes (sending or sent)"| SkipDuplicate["Skip Dispatch / Duplicate Guard"]
+        CheckSent -->|"No Record"| Step1["Phase 1: Pre-commit State = 'SENDING'"]
+        Step1 --> Dispatcher["Notification Dispatcher"]
+        Dispatcher --> ModeEval{"Pipeline Mode"}
+        ModeEval -->|DRY_RUN| LogOnly["Log Intended Send + Save Outbox"]
+        ModeEval -->|REDIRECTED| TestInbox["Redirect to Test Inbox with X-Headers"]
+        ModeEval -->|"COHORT / PROD"| LiveSend["Send to Fellow via Gmail/SMTP"]
+        Dispatcher --> Result{"Delivery Result?"}
+        Result -->|Success| Step2A["Phase 2A: Commit State = 'SENT' + Timestamp"]
+        Result -->|Failure| Step2B["Phase 2B: Commit State = 'FAILED' + Retry Queue"]
     end
 ```
 
