@@ -6,6 +6,13 @@ from src.pipeline.engine import (
     ReconciliationReport,
     VideoProcessingResult,
 )
+from src.pipeline.recovery import (
+    OperationalHealthService,
+    RetryService,
+    HealthReport,
+    HealthIssue,
+    RetryReport,
+)
 
 __all__ = [
     "ExecutionLock",
@@ -13,4 +20,9 @@ __all__ = [
     "PipelineEngine",
     "ReconciliationReport",
     "VideoProcessingResult",
+    "OperationalHealthService",
+    "RetryService",
+    "HealthReport",
+    "HealthIssue",
+    "RetryReport",
 ]

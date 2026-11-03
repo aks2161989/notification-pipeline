@@ -14,6 +14,7 @@ from src.adapters.youtube_adapter import MockYouTubeAdapter, get_youtube_adapter
 from src.adapters.email_adapter import NotificationDispatcher, ConsoleSink, FileOutboxSink
 from src.pipeline.engine import PipelineEngine
 from src.pipeline.lock import ExecutionLock
+from src.pipeline.recovery import OperationalHealthService, RetryService
 
 
 def cmd_test_conn(args):
@@ -312,6 +313,61 @@ def cmd_queue_video(args):
         print(f"[+] Video {args.video_id} ('{video.title}') marked as QUEUED by PM.")
 
 
+def cmd_doctor(args):
+    """Run operational health check on pipeline state, locks, and data quality."""
+    init_db()
+    service = OperationalHealthService()
+    report = service.check_health()
+
+    print("\n" + "=" * 65)
+    print("      OPERATIONAL PIPELINE HEALTH CHECK & DIAGNOSTICS")
+    print("=" * 65)
+    print(f" Timestamp    : {report.inspected_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f" Status       : {'[PASS] HEALTHY' if report.healthy else '[WARN] ISSUES DETECTED'}")
+    print("-" * 65)
+
+    if not report.issues:
+        print("[+] No operational anomalies or stranded jobs detected!")
+    else:
+        print(f"[*] Detected {len(report.issues)} operational issue(s):")
+        issue_rows = []
+        for iss in report.issues:
+            issue_rows.append([
+                iss.severity,
+                iss.category,
+                iss.record_id or "N/A",
+                iss.description[:45] + "..." if len(iss.description) > 45 else iss.description,
+            ])
+        print(tabulate(
+            issue_rows,
+            headers=["Severity", "Category", "Record ID", "Description"],
+            tablefmt="rounded_grid",
+        ))
+    print("=" * 65 + "\n")
+
+
+def cmd_retry(args):
+    """Retry failed notifications up to maximum attempts."""
+    init_db()
+    service = RetryService()
+    report = service.retry_failed(
+        max_attempts=args.max_attempts,
+        mode=PipelineMode(args.mode.upper()) if args.mode else settings.PIPELINE_MODE,
+        redirect_to=args.redirect_to,
+    )
+
+    print("\n" + "=" * 65)
+    print("          FAILED NOTIFICATIONS RETRY EXECUTION")
+    print("=" * 65)
+    print(f" Retried Count       : {report.retried_count}")
+    print(f" Successfully Sent   : {report.succeeded_count}")
+    print(f" Permanently Dead    : {report.exhausted_count}")
+    print("-" * 65)
+    for d in report.details:
+        print(f"  • {d}")
+    print("=" * 65 + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Humanitarians AI Notification Pipeline CLI")
     subparsers = parser.add_subparsers(dest="command", help="Subcommand to run")
@@ -357,6 +413,15 @@ def main():
     # report
     subparsers.add_parser("report", help="Generate pipeline audit and reconciliation metrics")
 
+    # doctor
+    subparsers.add_parser("doctor", help="Run health check and diagnostics on pipeline state")
+
+    # retry
+    p_retry = subparsers.add_parser("retry", help="Retry failed notifications up to max attempts")
+    p_retry.add_argument("--max-attempts", type=int, default=3, help="Max retry attempt threshold")
+    p_retry.add_argument("--mode", choices=["DRY_RUN", "REDIRECTED", "COHORT", "PROD"], help="Execution mode override")
+    p_retry.add_argument("--redirect-to", type=str, help="Recipient override in REDIRECTED mode")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -373,6 +438,8 @@ def main():
         "queue-video": cmd_queue_video,
         "run": cmd_run,
         "report": cmd_report,
+        "doctor": cmd_doctor,
+        "retry": cmd_retry,
     }
     handlers[args.command](args)
 

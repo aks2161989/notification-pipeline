@@ -1,6 +1,6 @@
 """Data access repository for pipeline queries and atomic state updates."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import Session, joinedload
@@ -148,6 +148,36 @@ class PipelineRepository:
             select(NotificationLogORM)
             .where(NotificationLogORM.video_id == video_id)
             .order_by(NotificationLogORM.notification_id.desc())
+        )
+        return self.session.scalars(stmt).all()
+
+    def get_stranded_sending_notifications(self, older_than_minutes: int = 15) -> List[NotificationLogORM]:
+        """Detect notifications stranded in SENDING state (potential process crashes)."""
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=older_than_minutes)
+        stmt = (
+            select(NotificationLogORM)
+            .join(NotificationLogORM.video)
+            .where(
+                and_(
+                    NotificationLogORM.delivery_status == NotificationDeliveryStatus.SENDING.value,
+                    # Fallback to current time if sent_on is not yet set
+                    func.coalesce(NotificationLogORM.sent_on, cutoff) <= cutoff,
+                )
+            )
+        )
+        return self.session.scalars(stmt).all()
+
+    def get_retryable_failed_notifications(self, max_attempts: int = 3) -> List[NotificationLogORM]:
+        """Fetch failed notifications that have not exceeded the retry threshold."""
+        stmt = (
+            select(NotificationLogORM)
+            .options(joinedload(NotificationLogORM.video).joinedload(VideoRecordORM.fellow))
+            .where(
+                and_(
+                    NotificationLogORM.delivery_status == NotificationDeliveryStatus.FAILED.value,
+                    NotificationLogORM.attempt_count < max_attempts,
+                )
+            )
         )
         return self.session.scalars(stmt).all()
 
