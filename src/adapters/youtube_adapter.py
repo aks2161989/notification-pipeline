@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 from typing import Optional, Dict
 import requests
 
-from src.config import settings
+import json
+from pathlib import Path
+from src.config import settings, BASE_DIR
 
 
 @dataclass
@@ -36,59 +38,93 @@ class BaseYouTubeAdapter(ABC):
 
 
 class MockYouTubeAdapter(BaseYouTubeAdapter):
-    """In-memory mock adapter simulating YouTube Studio and publication events.
+    """In-memory & file-persisted mock adapter simulating YouTube Studio and publication events.
     
     Allows simulating Professor Brown or Nina publishing a video from the Queue playlist.
     """
 
-    def __init__(self):
-        # Simulated YouTube channel video catalog
-        self._videos: Dict[str, YouTubeVideoMetadata] = {
-            "RzW17zhV4Nw": YouTubeVideoMetadata(
-                video_id="RzW17zhV4Nw",
-                title="Madison System Architecture Overview",
-                privacy_status="unlisted",
-                upload_status="processed",
-                playlist_name="Queue",
-            ),
-            "dQw4w9WgXcQ": YouTubeVideoMetadata(
-                video_id="dQw4w9WgXcQ",
-                title="NeuroVEP Visual Evoked Potential Analysis",
-                privacy_status="unlisted",
-                upload_status="processed",
-                playlist_name="Queue",
-            ),
-            "3C_zAB12345": YouTubeVideoMetadata(
-                video_id="3C_zAB12345",
-                title="Lyrical Literacy Interactive Learning Demo",
-                privacy_status="public",
-                upload_status="processed",
-                published_at=datetime.now(timezone.utc),
-            ),
-            "4D_wCD67890": YouTubeVideoMetadata(
-                video_id="4D_wCD67890",
-                title="Medhavi Assistive Tech Walkthrough",
-                privacy_status="unlisted",
-                upload_status="processed",
-                playlist_name="Queue",
-            ),
-            "5E_vEF99999": YouTubeVideoMetadata(
-                video_id="5E_vEF99999",
-                title="Caching Explained in 5 Minutes",
-                privacy_status="private",
-                upload_status="processed",
-            ),
+    def __init__(self, state_file: Optional[Path] = None):
+        self.state_file = state_file
+        self._videos: Dict[str, YouTubeVideoMetadata] = {}
+        self._load_or_init()
+
+    def _load_or_init(self) -> None:
+        defaults = {
+            "RzW17zhV4Nw": {
+                "title": "Madison System Architecture Overview",
+                "privacy_status": "unlisted",
+                "upload_status": "processed",
+                "playlist_name": "Queue",
+            },
+            "dQw4w9WgXcQ": {
+                "title": "NeuroVEP Visual Evoked Potential Analysis",
+                "privacy_status": "unlisted",
+                "upload_status": "processed",
+                "playlist_name": "Queue",
+            },
+            "3C_zAB12345": {
+                "title": "Lyrical Literacy Interactive Learning Demo",
+                "privacy_status": "public",
+                "upload_status": "processed",
+            },
+            "4D_wCD67890": {
+                "title": "Medhavi Assistive Tech Walkthrough",
+                "privacy_status": "unlisted",
+                "upload_status": "processed",
+                "playlist_name": "Queue",
+            },
+            "5E_vEF99999": {
+                "title": "Caching Explained in 5 Minutes",
+                "privacy_status": "private",
+                "upload_status": "processed",
+            },
         }
+
+        saved_state = {}
+        if self.state_file and self.state_file.exists():
+            try:
+                saved_state = json.loads(self.state_file.read_text(encoding="utf-8"))
+            except Exception:
+                saved_state = {}
+
+        # Merge defaults with saved
+        for vid, data in defaults.items():
+            state = saved_state.get(vid, data)
+            self._videos[vid] = YouTubeVideoMetadata(
+                video_id=vid,
+                title=state.get("title", data["title"]),
+                privacy_status=state.get("privacy_status", data["privacy_status"]),
+                upload_status=state.get("upload_status", data["upload_status"]),
+                playlist_name=state.get("playlist_name", data.get("playlist_name")),
+            )
+
+    def _persist(self) -> None:
+        if not self.state_file:
+            return
+        raw = {}
+        for vid, m in self._videos.items():
+            raw[vid] = {
+                "title": m.title,
+                "privacy_status": m.privacy_status,
+                "upload_status": m.upload_status,
+                "playlist_name": m.playlist_name,
+            }
+        try:
+            self.state_file.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+        except OSError:
+            pass
 
     def register_video(self, meta: YouTubeVideoMetadata) -> None:
         """Register or update a simulated video."""
         self._videos[meta.video_id] = meta
+        self._persist()
 
     def simulate_publish(self, video_id: str) -> bool:
         """Simulate a reviewer publishing the video (making it Public)."""
         if video_id in self._videos:
             self._videos[video_id].privacy_status = "public"
             self._videos[video_id].published_at = datetime.now(timezone.utc)
+            self._persist()
             return True
         return False
 
@@ -96,6 +132,7 @@ class MockYouTubeAdapter(BaseYouTubeAdapter):
         """Simulate a video being set back to private/unlisted."""
         if video_id in self._videos:
             self._videos[video_id].privacy_status = "unlisted"
+            self._persist()
             return True
         return False
 
@@ -156,5 +193,5 @@ class LiveYouTubeAdapter(BaseYouTubeAdapter):
 def get_youtube_adapter() -> BaseYouTubeAdapter:
     """Factory creating YouTube adapter based on settings."""
     if settings.USE_MOCK_APIS:
-        return MockYouTubeAdapter()
+        return MockYouTubeAdapter(state_file=BASE_DIR / ".mock_youtube.json")
     return LiveYouTubeAdapter()

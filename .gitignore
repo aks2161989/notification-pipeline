@@ -35,6 +35,8 @@ token.json
 *.sqlite3
 pipeline.db
 outbox/
+.mock_youtube.json
+.pipeline.lock
 
 # Local reference materials (resumes, private specs, job descriptions)
 references/
